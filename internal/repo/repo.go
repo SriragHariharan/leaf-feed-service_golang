@@ -36,6 +36,8 @@ func (r *Repo) GetFeed(ctx context.Context, userId string, cursor string) ([]mod
 	var feeds []models.Feed
 	query := r.db.WithContext(ctx).
 		Model(&models.Feed{}).
+		Preload("Author").
+		Preload("Post").
 		Where("user_id = ?", userId).
 		Order("created_at DESC, feed_id DESC").
 		Limit(FeedsPerCursor + 1)
@@ -82,6 +84,8 @@ func (r *Repo) GetTimeline(ctx context.Context, userId string, cursor string) ([
 
 	query := r.db.WithContext(ctx).
 		Model(&models.Feed{}).
+		Preload("Author").
+		Preload("Post").
 		Where("author_id = ?", userId).
 		Order("created_at DESC, feed_id DESC").
 		Limit(TimelinePerPage + 1)
