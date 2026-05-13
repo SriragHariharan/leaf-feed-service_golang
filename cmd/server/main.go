@@ -14,6 +14,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/sriraghariharan/feed-service-go/internal/db"
+	"github.com/sriraghariharan/feed-service-go/internal/handler"
+	"github.com/sriraghariharan/feed-service-go/internal/repo"
+	"github.com/sriraghariharan/feed-service-go/internal/service"
 )
 
 func main() {
@@ -22,7 +25,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if _, err := db.Connect(ctx); err != nil {
+	_, err := db.Connect(ctx)
+	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
 	defer func() {
@@ -33,16 +37,28 @@ func main() {
 
 	fmt.Println("Hello, Welcome to the Feed Service!")
 
+	
+	//dependency injection
+	database := db.DB
+	feedRepo := repo.NewRepo(database)
+	feedService := service.NewService(feedRepo)
+	feedHandler := handler.NewFeedHandler(feedService)
+	
 	//gorilla mux router
 	router := mux.NewRouter()
-	router.HandleFunc("/", homeHandler).Methods("GET")
+	//routes
+	router.HandleFunc("/test", testHandler).Methods("GET")
+	router.HandleFunc("/feed", feedHandler.GetFeed).Methods("GET")
+	router.HandleFunc("/timeline/{user_id}", feedHandler.GetTimeline).Methods("GET")
+	//start the server
 	log.Fatal(http.ListenAndServe(":4040", router))
 }
 
-func homeHandler(w http.ResponseWriter, r *http.Request) {
+//test handler
+func testHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Hello, Welcome to the Feed Service!"})
+	json.NewEncoder(w).Encode(map[string]string{"message": "Feed service running!"})
 }
 
 // loadDotEnv loads the first existing .env from cwd or parent dirs (e.g. module root when
