@@ -3,6 +3,8 @@ module github.com/sriraghariharan/feed-service-go
 go 1.26.2
 
 require (
+	github.com/bxcodec/faker/v3 v3.8.1
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/joho/godotenv v1.5.1
 	gorm.io/driver/postgres v1.6.0
