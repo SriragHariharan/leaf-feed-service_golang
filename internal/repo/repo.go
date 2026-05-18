@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/sriraghariharan/feed-service-go/internal/models"
 	"gorm.io/gorm"
@@ -67,53 +68,78 @@ func (r *Repo) GetFeed(ctx context.Context, userId string, cursor string) ([]mod
 			return nil, "", errors.New("failed to encode next cursor: " + err.Error())
 		}
 	}
-
+	fmt.Println("feeds: ", feeds)
+	fmt.Println("length of feeds: ", len(feeds))
 	return feeds, nextCursor, nil
 }
 
-// GetTimeline returns timeline feeds with cursor based pagination.
+// GetTimeline returns posts authored by userId (feed_posts.owner_id) with cursor pagination.
+// Equivalent to:
+//
+//	SELECT feed_posts.* FROM feed_posts
+//	INNER JOIN feed_users ON feed_posts.owner_id = feed_users.user_id
+//	WHERE feed_posts.owner_id = ?
+//
+// Owner is loaded from the join via InnerJoins (same join shape as above).
 func (r *Repo) GetTimeline(ctx context.Context, userId string, cursor string) ([]models.Feed, string, error) {
 	if r.db == nil {
 		return nil, "", errors.New("repo db dependency is nil")
 	}
 
-	cursorData, err := decodeFeedCursor(cursor)
+	cursorData, err := decodePostCursor(cursor)
 	if err != nil {
 		return nil, "", errors.New("failed to decode cursor: " + err.Error())
 	}
 
 	query := r.db.WithContext(ctx).
-		Model(&models.Feed{}).
-		Preload("Author").
-		Preload("Post").
-		Where("author_id = ?", userId).
-		Order("created_at DESC, feed_id DESC").
+		Model(&models.Post{}).
+		InnerJoins("Owner").
+		Where("feed_posts.owner_id = ?", userId).
+		Order("feed_posts.created_at DESC, feed_posts.post_id DESC").
 		Limit(TimelinePerPage + 1)
 
 	if cursorData != nil {
 		query = query.Where(
-			"(created_at < ?) OR (created_at = ? AND feed_id < ?)",
-			cursorData.CreatedAt, cursorData.CreatedAt, cursorData.FeedID,
+			"(feed_posts.created_at < ?) OR (feed_posts.created_at = ? AND feed_posts.post_id < ?)",
+			cursorData.CreatedAt, cursorData.CreatedAt, cursorData.PostID,
 		)
 	}
-	var feeds []models.Feed
-	err = query.Find(&feeds).Error
-	if err != nil {
+
+	var posts []models.Post
+	if err := query.Find(&posts).Error; err != nil {
 		return nil, "", errors.New("failed to get timeline: " + err.Error())
 	}
 
 	nextCursor := ""
-	if len(feeds) > TimelinePerPage {
-		feeds = feeds[:TimelinePerPage]
-		lastFeed := feeds[len(feeds)-1]
+	if len(posts) > TimelinePerPage {
+		posts = posts[:TimelinePerPage]
+		lastPost := posts[len(posts)-1]
 
-		nextCursor, err = encodeFeedCursor(feedCursor{
-			CreatedAt: lastFeed.CreatedAt,
-			FeedID:    lastFeed.FeedID,
+		nextCursor, err = encodePostCursor(postCursor{
+			CreatedAt: lastPost.CreatedAt,
+			PostID:    lastPost.PostID,
 		})
 		if err != nil {
 			return nil, "", errors.New("failed to encode next cursor: " + err.Error())
 		}
+	}
+
+	feeds := make([]models.Feed, 0, len(posts))
+	for i := range posts {
+		post := posts[i]
+		feed := models.Feed{
+			FeedID:    post.PostID,
+			AuthorID:  post.OwnerID,
+			PostID:    post.PostID,
+			CreatedAt: post.CreatedAt,
+			UpdatedAt: post.UpdatedAt,
+			Post:      &post,
+		}
+		if post.Owner != nil {
+			owner := *post.Owner
+			feed.Author = &owner
+		}
+		feeds = append(feeds, feed)
 	}
 
 	return feeds, nextCursor, nil

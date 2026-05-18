@@ -17,6 +17,7 @@ import (
 	"github.com/sriraghariharan/feed-service-go/internal/handler"
 	"github.com/sriraghariharan/feed-service-go/internal/kafka"
 	"github.com/sriraghariharan/feed-service-go/internal/kafka/consumers"
+	"github.com/sriraghariharan/feed-service-go/internal/middleware"
 	"github.com/sriraghariharan/feed-service-go/internal/models"
 	"github.com/sriraghariharan/feed-service-go/internal/repo"
 	"github.com/sriraghariharan/feed-service-go/internal/service"
@@ -54,12 +55,20 @@ func main() {
 	userService := service.NewUserService(feedRepo)
 	consumers.Run(ctx, userService)
 
+	if os.Getenv("ACCESS_TOKEN_SECRET") == "" {
+		log.Fatal("ACCESS_TOKEN_SECRET is required")
+	}
+
 	fmt.Println("Hello, Welcome to the Feed Service!")
 
 	router := mux.NewRouter()
+	router.StrictSlash(true)
 	router.HandleFunc("/test", testHandler).Methods("GET")
-	router.HandleFunc("/feed", feedHandler.GetFeed).Methods("GET")
-	router.HandleFunc("/timeline/{user_id}", feedHandler.GetTimeline).Methods("GET")
+
+	protected := router.PathPrefix("/api/v1").Subrouter()
+	protected.Use(middleware.ValidateAccessToken)
+	protected.HandleFunc("/feed", feedHandler.GetFeed).Methods("GET")
+	protected.HandleFunc("/timeline/{user_id}", feedHandler.GetTimeline).Methods("GET")
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "2004"

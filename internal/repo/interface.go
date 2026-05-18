@@ -1,7 +1,10 @@
 package repo
 
-import "context"
-import "github.com/sriraghariharan/feed-service-go/internal/models"
+import (
+	"context"
+
+	"github.com/sriraghariharan/feed-service-go/internal/models"
+)
 
 type IRepository interface {
 
