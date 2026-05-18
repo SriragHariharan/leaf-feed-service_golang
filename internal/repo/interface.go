@@ -11,3 +11,7 @@ type IRepository interface {
 	// get the timeline of visited profile
 	GetTimeline(ctx context.Context, userId string, cursor string) ([]models.Feed, string, error)
 }
+
+type IUserRepository interface {
+	UpsertUser(ctx context.Context, userID, username, profilePic string) error
+}
