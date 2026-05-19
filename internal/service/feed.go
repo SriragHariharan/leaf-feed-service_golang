@@ -30,9 +30,9 @@ func (s *Service) GetFeed(ctx context.Context, userId string, cursor string) ([]
 }
 
 // get the timeline of visited profile
-func (s *Service) GetTimeline(ctx context.Context, userId string, cursor string) ([]models.Feed, string, error) {
+func (s *Service) GetTimeline(ctx context.Context, userId string, viewerUserId string, cursor string) ([]models.Feed, string, error) {
 	if s.repo == nil {
 		return nil, "", errors.New("repo dependency is nil")
 	}
-	return s.repo.GetTimeline(ctx, userId, cursor)
+	return s.repo.GetTimeline(ctx, userId, viewerUserId, cursor)
 }

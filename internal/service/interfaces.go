@@ -11,5 +11,5 @@ type IService interface {
 	GetFeed(ctx context.Context, userId string, cursor string) ([]models.Feed, string, error)
 
 	// get the timeline of visited profile
-	GetTimeline(ctx context.Context, userId string, cursor string) ([]models.Feed, string, error)
+	GetTimeline(ctx context.Context, userId string, viewerUserId string, cursor string) ([]models.Feed, string, error)
 }

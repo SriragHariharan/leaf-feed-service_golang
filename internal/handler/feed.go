@@ -85,7 +85,8 @@ func (h *FeedHandler) GetTimeline(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), feedRequestTimeout)
 	defer cancel()
 
-	feeds, nextCursor, err := h.service.GetTimeline(ctx, userID, cursor)
+	viewerUserID, _ := middleware.UserIDFromContext(r.Context())
+	feeds, nextCursor, err := h.service.GetTimeline(ctx, userID, viewerUserID, cursor)
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "internal_error"

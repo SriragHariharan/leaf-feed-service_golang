@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/sriraghariharan/feed-service-go/internal/models"
 	"gorm.io/gorm"
 )
@@ -74,14 +76,7 @@ func (r *Repo) GetFeed(ctx context.Context, userId string, cursor string) ([]mod
 }
 
 // GetTimeline returns posts authored by userId (feed_posts.owner_id) with cursor pagination.
-// Equivalent to:
-//
-//	SELECT feed_posts.* FROM feed_posts
-//	INNER JOIN feed_users ON feed_posts.owner_id = feed_users.user_id
-//	WHERE feed_posts.owner_id = ?
-//
-// Owner is loaded from the join via InnerJoins (same join shape as above).
-func (r *Repo) GetTimeline(ctx context.Context, userId string, cursor string) ([]models.Feed, string, error) {
+func (r *Repo) GetTimeline(ctx context.Context, userId string, viewerUserId string, cursor string) ([]models.Feed, string, error) {
 	if r.db == nil {
 		return nil, "", errors.New("repo db dependency is nil")
 	}
@@ -142,5 +137,99 @@ func (r *Repo) GetTimeline(ctx context.Context, userId string, cursor string) ([
 		feeds = append(feeds, feed)
 	}
 
+	if viewerUserId != "" && len(feeds) > 0 {
+		postIDs := make([]string, 0, len(feeds))
+		for i := range feeds {
+			postIDs = append(postIDs, feeds[i].PostID)
+		}
+
+		var interactionRows []models.Feed
+		if err := r.db.WithContext(ctx).
+			Model(&models.Feed{}).
+			Where("user_id = ? AND post_id IN ?", viewerUserId, postIDs).
+			Find(&interactionRows).Error; err != nil {
+			return nil, "", errors.New("failed to load timeline interaction flags: " + err.Error())
+		}
+
+		interactionByPostID := make(map[string]models.Feed, len(interactionRows))
+		for i := range interactionRows {
+			interactionByPostID[interactionRows[i].PostID] = interactionRows[i]
+		}
+
+		for i := range feeds {
+			if row, ok := interactionByPostID[feeds[i].PostID]; ok {
+				feeds[i].IsLiked = row.IsLiked
+				feeds[i].IsCommented = row.IsCommented
+			}
+		}
+	}
+
 	return feeds, nextCursor, nil
+}
+
+func (r *Repo) UpdateFeedInteraction(ctx context.Context, actorUserID, postID string, isLiked, isCommented *bool) error {
+	if r.db == nil {
+		return errors.New("repo db dependency is nil")
+	}
+
+	updates := map[string]interface{}{}
+	if isLiked != nil {
+		updates["is_liked"] = *isLiked
+	}
+	if isCommented != nil {
+		updates["is_commented"] = *isCommented
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&models.Feed{}).
+		Where("user_id = ? AND post_id = ?", actorUserID, postID).
+		Updates(updates)
+	if result.Error != nil {
+		return errors.New("failed to update feed interaction: " + result.Error.Error())
+	}
+
+	if result.RowsAffected > 0 {
+		return nil
+	}
+
+	var post models.Post
+	if err := r.db.WithContext(ctx).
+		Model(&models.Post{}).
+		Where("post_id = ?", postID).
+		First(&post).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return errors.New("failed to lookup post for feed interaction upsert: " + err.Error())
+	}
+
+	isLikedVal := false
+	isCommentedVal := false
+	if isLiked != nil {
+		isLikedVal = *isLiked
+	}
+	if isCommented != nil {
+		isCommentedVal = *isCommented
+	}
+
+	now := time.Now().UTC()
+	newFeed := models.Feed{
+		FeedID:      uuid.NewString(),
+		UserID:      actorUserID,
+		AuthorID:    post.OwnerID,
+		PostID:      postID,
+		IsLiked:     isLikedVal,
+		IsCommented: isCommentedVal,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	if err := r.db.WithContext(ctx).Create(&newFeed).Error; err != nil {
+		return errors.New("failed to create feed interaction row: " + err.Error())
+	}
+
+	return nil
 }

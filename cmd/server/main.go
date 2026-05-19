@@ -53,7 +53,8 @@ func main() {
 	feedHandler := handler.NewFeedHandler(feedService)
 
 	userService := service.NewUserService(feedRepo)
-	consumers.Run(ctx, userService)
+	interactionService := service.NewInteractionService(feedRepo)
+	consumers.Run(ctx, userService, interactionService)
 
 	if os.Getenv("ACCESS_TOKEN_SECRET") == "" {
 		log.Fatal("ACCESS_TOKEN_SECRET is required")
