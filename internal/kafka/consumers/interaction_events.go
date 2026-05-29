@@ -22,6 +22,7 @@ func NewInteractionEventsReader() *kgo.Reader {
 		Brokers: kafka.Brokers,
 		Topic:   InteractionEventsTopic,
 		GroupID: interactionEventsGroupID,
+		Dialer:  kafka.Dialer,
 	})
 }
 
